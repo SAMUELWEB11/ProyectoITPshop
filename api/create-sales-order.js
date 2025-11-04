@@ -1,72 +1,88 @@
 /**
- * Vercel Serverless Function: Proxy Seguro para Crear un Pedido de Venta (Sales Order)
- * * PROPÓSITO: Esta función se invoca al hacer clic en "Proceder al Pago" en el frontend.
- * Recibe el JSON del carrito/pedido, añade las credenciales secretas (ERP_API_KEY, ERP_API_SECRET) 
- * y realiza la petición POST a la API de ERPNext para crear el Sales Order.
+ * Vercel Serverless Function para crear un Pedido de Venta (Sales Order) en ERPNext.
+ *
+ * Esta función recibe un payload de carrito (Sales Order) desde el front-end 
+ * y lo envía a ERPNext para su creación, utilizando las credenciales seguras.
+ *
+ * RUTA ESPERADA EN VERCEL: /api/create-sales-order
  */
 
-// Las credenciales de ERPNext se leen de las Variables de Entorno de Vercel (Configuración Segura)
+// AVISO DE SEGURIDAD CRÍTICO:
+// **********************************************************************************************
+// ESTOS VALORES ESTÁN HARDCODEADOS SÓLO PARA PRUEBAS LOCALES O PETICIÓN EXPRESA DEL USUARIO.
+// EN PRODUCCIÓN, DEBEN ELIMINARSE Y CONFIGURARSE EXCLUSIVAMENTE COMO VARIABLES DE ENTORNO EN VERCEL.
+// **********************************************************************************************
 const ERP_URL = 'https://itpshoppue.v.erpnext.com/';
 const ERP_API_KEY = '81b15af7d859103';
-const ERP_API_SECRET = 'a8478a4391b42bc';
+const ERP_API_SECRET = 'a8478a4391b42bc'; 
 
-const SALES_ORDER_API_PATH = '/api/resource/Sales Order';
 
-export default async function handler(req, res) {
-    // 1. Validar el método de petición
+module.exports = async (req, res) => {
+    // 1. Validación de Método
     if (req.method !== 'POST') {
-        return res.status(405).json({ error: 'Método no permitido. Solo se acepta POST.' });
+        return res.status(405).json({ error: 'Method Not Allowed', message: 'Only POST requests are supported on this endpoint.' });
     }
 
-    // 2. Validar configuración de credenciales
-    if (!API_KEY || !API_SECRET || !BASE_URL) {
-        // Este error ocurre si olvidaste configurar las variables en el panel de Vercel
-        return res.status(500).json({ error: 'Error de configuración del servidor: Faltan credenciales de ERPNext.' });
+    // 2. Validación de Credenciales (usando hardcodeado o variables de entorno)
+    if (!ERP_URL || !ERP_API_KEY || !ERP_API_SECRET) {
+        console.error('Missing ERPNext configuration.');
+        return res.status(500).json({ error: 'Server Configuration Error', message: 'ERPNext credentials are not configured.' });
     }
+
+    const salesOrderPayload = req.body;
+    
+    if (!salesOrderPayload || !salesOrderPayload.customer || !salesOrderPayload.items) {
+        return res.status(400).json({ error: 'Bad Request', message: 'Missing required fields (customer or items) in payload.' });
+    }
+
+    // *******************************************************************
+    // NUEVO: Log para depuración. Esto mostrará lo que se envía a ERPNext.
+    console.log('--- Sales Order Payload Recibido para ERPNext ---');
+    console.log(JSON.stringify(salesOrderPayload, null, 2));
+    console.log('---------------------------------------------------');
+    // *******************************************************************
+
+    const erpNextApiUrl = `${ERP_URL}/api/resource/Sales Order`;
 
     try {
-        const salesOrderPayload = req.body; 
-
-        // 3. Validar el contenido de la petición (mínimo necesario para un Sales Order)
-        if (!salesOrderPayload || !salesOrderPayload.customer || !salesOrderPayload.items) {
-            return res.status(400).json({ error: 'Datos de pedido incompletos. Se requieren customer e items.' });
-        }
-
-        const fullUrl = `${BASE_URL}${SALES_ORDER_API_PATH}`;
-
-        // 4. Realizar la petición a ERPNext con la autenticación secreta
-        const response = await fetch(fullUrl, {
+        // 3. Llamada a ERPNext para crear el Pedido de Venta
+        const response = await fetch(erpNextApiUrl, {
             method: 'POST',
             headers: {
+                'Authorization': `token ${ERP_API_KEY}:${ERP_API_SECRET}`,
                 'Content-Type': 'application/json',
-                // AÑADIR el token de autenticación (API Key/Secret) de forma SEGURA aquí
-                'Authorization': `token ${API_KEY}:${API_SECRET}` 
             },
-            // El cuerpo contiene el objeto DocType Sales Order (preparado en React)
-            body: JSON.stringify(salesOrderPayload)
+            // El cuerpo debe ser un objeto 'doc' que contiene el payload del Sales Order
+            body: JSON.stringify({ doc: salesOrderPayload }), 
         });
 
-        const responseData = await response.json();
+        // 4. Manejo de Respuesta HTTP
+        const data = await response.json();
 
-        // 5. Manejar la respuesta de ERPNext
         if (!response.ok) {
-            // Si ERPNext devuelve un error (ej. artículo no existe), lo enviamos al frontend
-            console.error('Error de API en Creación de Pedido:', responseData);
+            // ERPNext a menudo retorna el error dentro de la propiedad 'exc' (Exception)
+            const errorText = data.exc ? JSON.parse(data.exc).join('\n') : (data.message || 'Unknown ERPNext error');
+            
+            console.error('ERPNext Sales Order Creation Error:', errorText);
+            
             return res.status(response.status).json({ 
-                error: 'Fallo al crear el Pedido de Venta en ERPNext.',
-                details: responseData.exc || responseData // Devuelve el detalle del error de ERPNext
+                error: 'Failed to create Sales Order in ERPNext', 
+                details: errorText,
+                sent_payload: salesOrderPayload
             });
         }
 
-        // 6. Éxito: Devolver la confirmación y el número de pedido al frontend
-        res.status(200).json({ 
-            message: 'Pedido de Venta creado exitosamente.',
-            sales_order: responseData.data 
+        // 5. Éxito: Retorno del documento creado
+        return res.status(200).json({ 
+            message: 'Sales Order created successfully', 
+            sales_order: data.data // Contiene el documento creado
         });
 
     } catch (error) {
-        // Error de red o error de servidor inesperado
-        console.error('Error de Proxy:', error);
-        res.status(500).json({ error: 'Error interno del servidor durante la creación del Pedido.' });
+        console.error('Serverless function execution error:', error.message);
+        return res.status(500).json({ 
+            error: 'Internal Server Error', 
+            message: error.message 
+        });
     }
-}
+};
