@@ -16,6 +16,9 @@ const ERP_URL = 'https://itpshoppue.v.erpnext.com/';
 const ERP_API_KEY = '81b15af7d859103';
 const ERP_API_SECRET = 'a8478a4391b42bc'; 
 
+// CRÍTICO ACTUALIZADO: Usamos 'Stores - ITPS' como el almacén de donde salen los productos.
+const DEFAULT_WAREHOUSE = 'Stores - ITPS';
+
 
 module.exports = async (req, res) => {
     // 1. Validación de Método
@@ -29,14 +32,26 @@ module.exports = async (req, res) => {
         return res.status(500).json({ error: 'Server Configuration Error', message: 'ERPNext credentials are not configured.' });
     }
 
-    const salesOrderPayload = req.body;
+    let salesOrderPayload = req.body;
     
     if (!salesOrderPayload || !salesOrderPayload.customer || !salesOrderPayload.items) {
         return res.status(400).json({ error: 'Bad Request', message: 'Missing required fields (customer or items) in payload.' });
     }
+    
+    // 3. Modificación CRÍTICA del Payload: Agregar el Almacén por defecto
+    // ERPNext requiere un Almacén (Warehouse) de donde se venderá el ítem.
+    const itemsWithWarehouse = salesOrderPayload.items.map(item => ({
+        ...item,
+        warehouse: DEFAULT_WAREHOUSE // AHORA ES 'Stores - ITPS'
+    }));
+    
+    salesOrderPayload = {
+        ...salesOrderPayload,
+        items: itemsWithWarehouse
+    };
 
     // *******************************************************************
-    // NUEVO: Log para depuración. Esto mostrará lo que se envía a ERPNext.
+    // Log para depuración. Esto mostrará lo que se envía a ERPNext.
     console.log('--- Sales Order Payload Recibido para ERPNext ---');
     console.log(JSON.stringify(salesOrderPayload, null, 2));
     console.log('---------------------------------------------------');
@@ -45,7 +60,7 @@ module.exports = async (req, res) => {
     const erpNextApiUrl = `${ERP_URL}/api/resource/Sales Order`;
 
     try {
-        // 3. Llamada a ERPNext para crear el Pedido de Venta
+        // 4. Llamada a ERPNext para crear el Pedido de Venta
         const response = await fetch(erpNextApiUrl, {
             method: 'POST',
             headers: {
@@ -56,7 +71,7 @@ module.exports = async (req, res) => {
             body: JSON.stringify({ doc: salesOrderPayload }), 
         });
 
-        // 4. Manejo de Respuesta HTTP
+        // 5. Manejo de Respuesta HTTP
         const data = await response.json();
 
         if (!response.ok) {
@@ -72,7 +87,7 @@ module.exports = async (req, res) => {
             });
         }
 
-        // 5. Éxito: Retorno del documento creado
+        // 6. Éxito: Retorno del documento creado
         return res.status(200).json({ 
             message: 'Sales Order created successfully', 
             sales_order: data.data // Contiene el documento creado
