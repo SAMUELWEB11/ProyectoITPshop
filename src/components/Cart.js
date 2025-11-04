@@ -1,10 +1,12 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Minus, Plus, Trash2 } from 'lucide-react';
-import { updateQuantity, calculateTotal } from '../utils/cartHelpers';
+import { X, Minus, Plus, Trash2, Loader } from 'lucide-react'; // Se agregó Loader para el estado de carga
+// Se eliminó la importación de '../utils/cartHelpers' para evitar el error de compilación
 
-const Cart = ({ cart, onUpdateQuantity, onRemoveFromCart, onClose }) => {
-  const total = calculateTotal(cart);
+// Recibimos las nuevas props: onCheckout y isProcessing
+const Cart = ({ cart, onUpdateQuantity, onRemoveFromCart, onClose, onCheckout, isProcessing }) => {
+  // Calculamos el total aquí directamente para asegurar la compilación
+  const total = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
 
   return (
     <motion.div
@@ -32,6 +34,7 @@ const Cart = ({ cart, onUpdateQuantity, onRemoveFromCart, onClose }) => {
               className="text-center text-gray-500 py-8"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
             >
               Tu carrito está vacío. ¡Empieza a comprar!
             </motion.p>
@@ -87,11 +90,25 @@ const Cart = ({ cart, onUpdateQuantity, onRemoveFromCart, onClose }) => {
                   </span>
                 </div>
                 <motion.button
-                  className="w-full mt-4 bg-gradient-to-r from-amber-600 to-yellow-500 text-white py-3 rounded-lg font-semibold hover:from-amber-700 hover:to-yellow-600 transition-all shadow-md hover:shadow-lg"
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
+                  // --- CONEXIÓN AL CHECKOUT SEGURO ---
+                  onClick={onCheckout}
+                  disabled={isProcessing || cart.length === 0} // Deshabilitado si procesando o carrito vacío
+                  className={`w-full mt-4 py-3 rounded-lg font-semibold transition-all shadow-md hover:shadow-lg flex justify-center items-center ${
+                    isProcessing || cart.length === 0
+                      ? 'bg-gray-400 text-gray-700 cursor-not-allowed'
+                      : 'bg-gradient-to-r from-amber-600 to-yellow-500 text-white hover:from-amber-700 hover:to-yellow-600'
+                  }`}
+                  whileHover={{ scale: isProcessing ? 1 : 1.02 }} 
+                  whileTap={{ scale: isProcessing ? 1 : 0.98 }}
                 >
-                  Proceder al Pago
+                  {isProcessing ? (
+                    <>
+                      <Loader className="w-5 h-5 mr-2 animate-spin" />
+                      Procesando Pedido...
+                    </>
+                  ) : (
+                    'Proceder al Pago'
+                  )}
                 </motion.button>
               </div>
             </>
